@@ -1,0 +1,188 @@
+```{r}
+library(ggplot2)
+library(tidyverse)
+```
+
+### [Contributions:]{.underline}
+
+*Note:* First draft of code for Task 2 was written independently by the two of us before we started working together. We then combined and improved our code.
+
+**Hansen** **Zhang** - Revised parts of findRange and genNodes, and small parts of findRc based on the test files. Small part of Task 3 in running the n-node simulations.
+
+**Edison Lu** - Answered Task 3 a, b and c
+
+```{r}
+nodeDensity = function (x, y) {
+# x is a numeric vector 
+# y is a numeric vector the same length as x
+# z is returned. 
+# It is a numeric vector that provides the value of the node density function
+
+# Check the inputs for the correct format
+if (mode(x) != "numeric" | mode(y) != "numeric") stop("x and y must be numeric")
+if (length(x) != length(y)) stop("x and y must be same length")
+
+  a = 3
+  b = 1
+  band = 15 
+  bank = 1
+  inBoundary = (0 <= x & x <= 100) & 
+             (0 <= y & y <= 100 & y < sqrt(110^2 - x^2))
+
+  river = abs(sqrt(x^2 + y^2) - 60) 
+  hiArea = river> bank & river < band & inBoundary
+
+  hiDensity = a * cos(river[hiArea] * pi / (2 * band)) + b 
+
+  z = b * inBoundary
+  z[hiArea] = hiDensity
+  z[river <= bank] = 0 
+  z
+}
+```
+
+## Task 1
+
+```{r Generate a Network of Nodes}
+
+genNodes = function(n) {
+  nodes = matrix(0, n, 2)
+  i = 1
+  while (i <= n) {
+    # Generate random x and y coordinates
+    x = runif(1, 0, 100)
+    y = runif(1, 0, 100)
+
+    # Generate a random value to determine acceptance
+    u = runif(1, 0, 4)
+
+    # Check if the generated point is accepted
+    if (u < nodeDensity(x, y)) {
+      nodes[i, ] = c(x, y)
+      i = i + 1
+    }
+  }
+  return(nodes)
+}
+```
+
+## Task 2
+
+```{r Transition Matrix P}
+
+findTranMat = function(mat, R) {
+  #set of nodes whose distance to set i is leq than R (including i itself)
+  n = nrow(mat)
+  P = matrix(0, n, n)
+  
+  for(i in 1:n) {
+    S_i = which(mat[i, ] <= R)
+    for(k in 1:length(S_i)) {
+      P[i, S_i[k]] = 1/length(S_i)
+    }
+  }
+  return(P)
+}
+```
+
+```{r Second Largest Eigenvalue}
+
+getEigen2 = function(mat) {
+  eigen_decomp = eigen(mat)
+  eigenv_desc = sort(eigen_decomp$values, decreasing = TRUE)
+  return(eigenv_desc[2])
+}
+```
+
+```{r Find the Interval of Rc}
+
+findRange = function(mat) {
+  diag(mat) = max(mat)
+  R_min = max(apply(mat, MARGIN = 1, min))
+  diag(mat) = -1
+  R_max = min(apply(mat, MARGIN = 1, max))
+  return(c(R_min = R_min, R_max = R_max))
+}
+```
+
+```{r Find Rc}
+  
+findRc = function(nodes, tol = 0.05) {
+  #Step 2: Create a Distance Matrix from nodes
+  D = as.matrix(dist(nodes))
+  #Step 3: Calculate Range of possible values for R
+  R_range = findRange(D)
+  R_min = R_range['R_min']
+  R_max = R_range['R_max']
+
+  while(abs(R_min - R_max) >= tol) {
+    #Step 4:Calculate guess as initial R_0
+    R_0 = (R_min + R_max)/2
+    #Step 5: Convert Distance Matrix into Transition Matrix
+    D_tran_mat = findTranMat(D, R_0)
+    #Step 6: Output second eigenvalue, if less than 1,
+    #then nodes are completely connected
+    v = getEigen2(D_tran_mat)
+    
+      if (abs(v - 1) > 1e-7) {
+        R_max = R_0
+      } else {
+        R_min = R_0
+      }
+  }
+  return((R_min + R_max)/2)
+}
+```
+
+```{r}
+file.info('Final_Project_Hansen.Rmd')
+```
+
+## Task 3
+
+```{r}
+seeds = vector(length = 2, mode = "list")
+set.seed(12345678)
+seeds[[1]] = .Random.seed
+
+Rc_5 = invisible(as.vector(replicate(1000, {
+  g_mat = genNodes(5)
+  findRc(g_mat)
+  
+})))
+
+Rc_10 = invisible(as.vector(replicate(1000, {
+  g_mat = genNodes(10)
+  findRc(g_mat)
+  
+})))
+
+Rc_15 = invisible(as.vector(replicate(1000, {
+  g_mat = genNodes(15)
+  findRc(g_mat)
+  
+})))
+
+Rc_20 = invisible(as.vector(replicate(1000, {
+  g_mat = genNodes(20)
+  findRc(g_mat)
+  
+})))
+
+# generate plots to illustrate relationship between Rc and different node configurations
+Rc_df <- data.frame(
+  Rc = c(Rc_5, Rc_10, Rc_15, Rc_20),
+  n = factor(rep(c(5, 10 ,15, 20), each = 1000))
+)
+
+ggplot(Rc_df, mapping = aes(x = n, y = Rc)) +
+  geom_boxplot(fill = "purple") +
+  labs(title = "Correlations between R_c and different node configurations",
+       x = "Number of nodes (n)",
+       y = "Smallest radius for successful network connections")
+  
+```
+
+**3(a):** According to the above graph, we discovered that the distribution of Rc, the smallest radius such that the network is connected, gradually become more clustered around the median, and the median value of Rc for each of the four node distributions decreases as the number of nodes increases.
+
+**3(b):** By the graph above, it is obvious to us that each of the four distributions of Rc is fairly symmetric.
